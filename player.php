@@ -25,7 +25,7 @@ function main()
 	}
 
 	$player = new InteractiveConsole($width, $height);
-	$player->run(new SnakeGame());
+	$player->run();
 }
 
 main();

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Katalama\ConsolePlayer;
 
+use Katalama\ConsolePlayer\Game\SelectorApp;
+use Katalama\ConsolePlayer\Game\SnakeGame;
+
 class InteractiveConsole
 {
     public function __construct(
@@ -17,6 +20,13 @@ class InteractiveConsole
     
     public function run(?GameInterface $game = null): void
     {
+        if (null === $game) {
+            $game = new SelectorApp([
+                new SnakeGame(),
+                new SnakeGame()
+            ]);
+        }
+
         $game->init($this->width, $this->height, $this->fps);
         $usleep = 1 / $this->fps;
         $readKeyTimeout = (int)($usleep * 1000);
