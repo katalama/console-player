@@ -1,0 +1,19 @@
+{
+    "name": "katalama/console-player",
+    "description": "Application for playing games in the terminal",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "Katalama\\ConsolePlayer\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "katalama",
+            "email": "katalama@mail.ru"
+        }
+    ],
+    "require": {
+        "ext-pcntl": "*"
+    }
+}
