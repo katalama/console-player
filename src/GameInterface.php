@@ -12,7 +12,7 @@ interface GameInterface
 
 	public function init(int $width, int $height, int $fps): void;
 
-    public function nextScene(): ?string;
+    public function nextScene(): ?SceneInterface;
 
 	public function handleKey(string $key): void;
 

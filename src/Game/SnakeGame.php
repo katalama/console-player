@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Katalama\ConsolePlayer\Game;
 
 use Katalama\ConsolePlayer\GameInterface;
+use Katalama\ConsolePlayer\SceneInterface;
 
 class SnakeGame implements GameInterface
 {
@@ -161,62 +162,20 @@ class SnakeGame implements GameInterface
     {
         $time = round($time, 6);
         $afterPoint = floor($time * 10) % 10;
-        $time = \DateTime::createFromFormat('U.u', (string)$time);
+        $timeObject = \DateTime::createFromFormat('U.u', (string)$time);
         return match (true) {
-            $time < 60 => $time->format('s') . '.' . $afterPoint,
-            $time < 60*60 => $time->format('i:s') . '.' . $afterPoint,
-            true => $time->format('H:i:s') . '.' . $afterPoint,
+            $time < 60 => $timeObject->format('s') . '.' . $afterPoint,
+            $time < 60*60 => $timeObject->format('i:s') . '.' . $afterPoint,
+            true => $timeObject->format('H:i:s') . '.' . $afterPoint,
         };
     }
-
-	private function asText(): string
-	{
-        $time = $this->getFormattedTime($this->getGameTime());
-        $timeToBeat = $this->getTimeToBeat();
-		$lines[] = "SCORE: "  . $this->score . " x \e[0;31m" . "\u{c4}" . "\e[0m"
-            // . "    SNAKE LENGTH: "  . $this->snakeLength . " x \e[0;31m" . "\u{c4}"
-            . "    SPEED: "  . $this->speed
-            . "    TIME: "  . $time
-            . "    beat: "  . (!is_null($timeToBeat) ? ($timeToBeat < 0 ? "\e[0;31m" : "\e[0;32m") . $this->getFormattedTime(abs($timeToBeat)) . "\e[0m" : '*');
-
-		$lines[] = "\e[0;31m" . str_repeat("\u{c5}", $this->width) . "\e[0m";
-
-		foreach ($this->field as $row) {
-			$s = '';
-			foreach ($row as $col => $val) {
-				if ($val > 0) {
-					// snake body
-					$symbol = "\u{c5}";//'●';
-					if ($val === $this->snakePotentialLength) {
-						$symbol = match ($this->direction) {
-							[ 0,  1] => "\u{c2}",//"\u{25d0}",
-							[ 0, -1] => "\u{c0}",//"\u{25d1}",
-							[ 1,  0] => "\u{c1}",//"\u{25d3}",
-							[-1,  0], [ 0,  0] => "\u{c3}",//"\u{25d2}",
-						};
-					}
-					
-					$s .= "\e[0;32m" . $symbol . "\e[0m";
-                } else if ($val === -1) {
-                    // apple
-                    $s .= "\e[0;31m" . "\u{c4}" . "\e[0m";
-				} else {
-					// nothing
-					$s .= ' ';
-				}
-			}
-			$lines[] = $s;
-		}
-		
-		return implode(PHP_EOL, $lines);
-	}
 	
-	public function nextScene(): ?string
+	public function nextScene(): ?SceneInterface
 	{
 		if ($this->isPaused) {
 			if (!$this->helpScreenWasShown) {
 				$this->helpScreenWasShown = true;
-				return $this->getHelpScreen();
+				return $this->asSceneObject();
 			} else {
 				return null;
 			}
@@ -232,8 +191,9 @@ class SnakeGame implements GameInterface
 			$this->recalc();
 			$this->previousSceneTime += 1/$this->speed;
 		}
-		
-		return $this->asText();
+
+        return $this->asSceneObject();
+		// return $this->asText();
 	}
 	
 	public function handleKey(string $key): void
@@ -335,32 +295,11 @@ class SnakeGame implements GameInterface
 	{
 		$this->isPaused = false;
 		$this->previousSceneTime = microtime(true) - 1 / $this->speed;
-        $this->startTime += microtime(true) - $this->pausedTime;
-	}
-	
-	private function getHelpScreen() {
-		$lines = ['','','','','','','',''];
-		$tab = str_repeat(' ', 8);
-		foreach ($this->getKeyHandlers() as $key => [$handler, $help]) {
-            $lines[] = $tab . $help;
+        if ($this->startTime !== null) {
+            $this->startTime += microtime(true) - $this->pausedTime;
         }
-        $lines[] = $tab . str_repeat('=', $this->width - 8*2);
-        $lines[] = $tab . "Score: " . $this->score . " (" . $this->snakeLength . ")";
-        $lines[] = $tab . "Snake future/real length: " . $this->snakePotentialLength . " / " . $this->snakeLength;
-        $lines[] = $tab . "Time spent: " . $this->getFormattedTime($this->getGameTime());
-
-		if ($this->dbg) {
-			$lines[] = "headX: " . $this->headX;
-			$lines[] = "headY: " . $this->headY;
-			$lines[] = "snakePotentialLength: " . $this->snakePotentialLength;
-			$lines[] = "snakeLength: " . $this->snakeLength;
-			$lines[] = "lastKeyPressed: " . $this->snakePotentialLength;
-			$lines = array_merge($lines, $this->log);
-		}
-		
-		return implode(PHP_EOL, $lines);
 	}
-	
+
 	public function isStopped(): bool
 	{
 		return $this->gameIsOver;
@@ -376,5 +315,40 @@ class SnakeGame implements GameInterface
         if (!isset($this->records[$this->score + 1])) return null;
 
         return $this->records[$this->score + 1] - $this->getGameTime();
+    }
+
+    private function asSceneObject(): SceneInterface
+    {
+        return new SnakeScene($this->getGameState());
+    }
+
+    private function getGameState()
+    {
+        $time = $this->getFormattedTime($this->getGameTime());
+        $timeToBeat = $this->getTimeToBeat();
+
+        $handlers = [];
+        foreach ($this->getKeyHandlers() as $key => [$handler, $help]) {
+            $handlers[] = [$key, $help];
+        }
+
+        return [
+            'time' => $time,
+            'gameTime' => $this->getGameTime(),
+            'timeToBeat' => $timeToBeat,
+            'score' => $this->score,
+            'speed' => $this->speed,
+            'width' => $this->width,
+            'height' => $this->height,
+            'field' => $this->field,
+            'snakePotentialLength' => $this->snakePotentialLength,
+            'snakeLength' => $this->snakeLength,
+            'direction' => $this->direction,
+            'isPaused' => $this->isPaused,
+            'helpScreenWasShown' => $this->helpScreenWasShown,
+            'handlers' => $handlers,
+            'records' => $this->records,
+            'gameIsOver' => $this->gameIsOver
+        ];
     }
 }
