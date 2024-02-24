@@ -28,6 +28,7 @@ class SnakeGame implements GameInterface
     private ?float $startTime = null;
     private float $pausedTime = 0;
     private int $apples = 0;
+    private array $records;
 
     public function getTitle(): ?string
     {
@@ -55,8 +56,24 @@ class SnakeGame implements GameInterface
 		$this->addApple();
 		$this->addApple();
 		$this->addApple();
+
+        $this->loadRecords();
 	}
-	
+
+    private function loadRecords(): void
+    {
+        try {
+            $this->records = unserialize(file_get_contents("./records.txt"));
+        } catch (\Throwable $e) {
+            $this->records = [];
+        }
+    }
+
+    private function saveRecords(): void
+    {
+        file_put_contents("./records.txt", serialize($this->records));
+    }
+
 	private function addApple(): void
     {
 		$nextApplePos = random_int(0, $this->height * $this->width - $this->snakeLength - $this->apples);
@@ -111,6 +128,8 @@ class SnakeGame implements GameInterface
 		if ($this->field[$nextX][$nextY] === -1) {
             ++$this->snakePotentialLength;
             ++$this->score;
+            $this->addRecord();
+            $this->saveRecords();
 			$this->addApple();
 		}
 		
@@ -127,7 +146,7 @@ class SnakeGame implements GameInterface
     private function getGameTime(): float
     {
         if ($this->startTime === null) {
-            return 0.00;
+            return 0.01;
         }
 
         $finishTime = microtime(true);
@@ -135,27 +154,30 @@ class SnakeGame implements GameInterface
             $finishTime = $this->pausedTime;
         }
 
-        return $finishTime - $this->startTime;
+        return round($finishTime - $this->startTime, 6) + 0.01;
     }
 
-    private function getFormattedTime()
+    private function getFormattedTime(float $time): string
     {
-        $time = $this->getGameTime();
-
-        [$seconds, $millis] = [floor($time), round($time - floor($time), 1, 1)];
-        $hours = floor($seconds / 60 / 60);
-        $minutes = floor($seconds / 60) % 60;
-        $seconds = $seconds % 60;
-
-        return ($hours ? "$hours:" : '') . ($minutes ? "$minutes:" : "") . ($seconds + $millis);
+        $time = round($time, 6);
+        $afterPoint = floor($time * 10) % 10;
+        $time = \DateTime::createFromFormat('U.u', (string)$time);
+        return match (true) {
+            $time < 60 => $time->format('s') . '.' . $afterPoint,
+            $time < 60*60 => $time->format('i:s') . '.' . $afterPoint,
+            true => $time->format('H:i:s') . '.' . $afterPoint,
+        };
     }
 
 	private function asText(): string
 	{
-        $time = $this->getFormattedTime();
+        $time = $this->getFormattedTime($this->getGameTime());
+        $timeToBeat = $this->getTimeToBeat();
 		$lines[] = "SCORE: "  . $this->score . " x \e[0;31m" . "\u{c4}" . "\e[0m"
             // . "    SNAKE LENGTH: "  . $this->snakeLength . " x \e[0;31m" . "\u{c4}"
-            . "    TIME: "  . $time;
+            . "    SPEED: "  . $this->speed
+            . "    TIME: "  . $time
+            . "    beat: "  . (!is_null($timeToBeat) ? ($timeToBeat < 0 ? "\e[0;31m" : "\e[0;32m") . $this->getFormattedTime(abs($timeToBeat)) . "\e[0m" : '*');
 
 		$lines[] = "\e[0;31m" . str_repeat("\u{c5}", $this->width) . "\e[0m";
 
@@ -324,8 +346,8 @@ class SnakeGame implements GameInterface
         }
         $lines[] = $tab . str_repeat('=', $this->width - 8*2);
         $lines[] = $tab . "Score: " . $this->score . " (" . $this->snakeLength . ")";
-        $lines[] = $tab . "Snake future/real length: " . $this->snakeLength . " / " . $this->snakeLength;
-        $lines[] = $tab . "Time spent: " . $this->getFormattedTime();
+        $lines[] = $tab . "Snake future/real length: " . $this->snakePotentialLength . " / " . $this->snakeLength;
+        $lines[] = $tab . "Time spent: " . $this->getFormattedTime($this->getGameTime());
 
 		if ($this->dbg) {
 			$lines[] = "headX: " . $this->headX;
@@ -343,4 +365,16 @@ class SnakeGame implements GameInterface
 	{
 		return $this->gameIsOver;
 	}
+
+    private function addRecord(): void
+    {
+        $this->records[$this->score] = min($this->records[$this->score] ?? 1e100, $this->getGameTime());
+    }
+
+    private function getTimeToBeat(): ?float
+    {
+        if (!isset($this->records[$this->score + 1])) return null;
+
+        return $this->records[$this->score + 1] - $this->getGameTime();
+    }
 }
